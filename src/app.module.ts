@@ -17,7 +17,7 @@ import { SettingsService } from './management/settings.service';
 @Module({
   imports: [
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', '..', 'web-dist'),
+      rootPath: join(__dirname, '..', 'web-dist'),
       exclude: ['/api', '/api/{*path}'],
     }),
   ],
