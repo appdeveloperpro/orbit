@@ -1,0 +1,48 @@
+{
+  "name": "unilevel-referral-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "In-memory demo backend for referral and unilevel commission flows",
+  "scripts": {
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "nest build",
+    "build:web": "vite build",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "start": "node dist/src/main.js",
+    "start:dev": "nest start --watch",
+    "api:dev": "nest start --watch",
+    "web:dev": "vite --host 0.0.0.0",
+    "dev": "concurrently -k -n API,WEB \"npm:api:dev\" \"npm:web:dev\"",
+    "start:prod": "node dist/src/main.js"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/serve-static": "^5.0.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  },
+  "overrides": {
+    "multer": "^2.5.0"
+  }
+}
