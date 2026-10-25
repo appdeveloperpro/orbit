@@ -157,6 +157,9 @@ export class CommissionService {
     }
 
     const sourceMember = this.membersService.getById(sourceMemberId);
+    if (sourceMember.archivedAt) {
+      throw new BadRequestException('Archived members cannot generate qualifying turnover');
+    }
     if (orderType === 'turnover' && sourceMember.status !== 'active') {
       throw new BadRequestException('Inactive members cannot generate qualifying turnover');
     }

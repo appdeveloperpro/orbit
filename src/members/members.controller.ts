@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { DemoAuthGuard } from '../auth/demo-auth.guard';
 import { CommissionService, JOINING_AMOUNT } from '../commissions/commission.service';
@@ -20,6 +20,19 @@ class CreateMemberDto {
 class UpdateMemberStatusDto {
   @IsIn(['active', 'inactive'])
   status!: 'active' | 'inactive';
+}
+
+class UpdateMemberDto {
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  sponsorId?: string;
 }
 
 @Controller('members')
@@ -47,9 +60,24 @@ export class MembersController {
     return member;
   }
 
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() body: UpdateMemberDto) {
+    return this.membersService.update(id, body.name, body.email, body.sponsorId || null);
+  }
+
   @Patch(':id/status')
   updateStatus(@Param('id') id: string, @Body() body: UpdateMemberStatusDto) {
     return this.membersService.updateStatus(id, body.status);
+  }
+
+  @Delete(':id')
+  archive(@Param('id') id: string) {
+    return this.membersService.archive(id);
+  }
+
+  @Patch(':id/restore')
+  restore(@Param('id') id: string) {
+    return this.membersService.restore(id);
   }
 
   @Get(':id/tree')

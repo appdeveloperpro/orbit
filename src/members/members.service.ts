@@ -31,7 +31,10 @@ export class MembersService {
       throw new ConflictException(`A member with email ${email} already exists`);
     }
     if (sponsorId) {
-      this.getById(sponsorId);
+      const sponsor = this.getById(sponsorId);
+      if (sponsor.archivedAt) {
+        throw new ConflictException('Archived members cannot sponsor new members');
+      }
     }
 
     const nextId = Math.max(...this.members.map((member) => Number(member.id.slice(4)))) + 1;
@@ -42,15 +45,74 @@ export class MembersService {
       joinedAt: new Date().toISOString().slice(0, 10),
       sponsorId: sponsorId ?? null,
       status: 'active',
+      archivedAt: null,
     };
     this.members.push(member);
     return member;
   }
 
+  update(id: string, name: string, email: string, sponsorId: string | null): Member {
+    const member = this.getById(id);
+    if (member.archivedAt) {
+      throw new ConflictException('Restore this member before editing their profile');
+    }
+    if (this.members.some((candidate) => candidate.id !== id && candidate.email.toLowerCase() === email.toLowerCase())) {
+      throw new ConflictException(`A member with email ${email} already exists`);
+    }
+    this.validateSponsorChange(id, sponsorId);
+
+    member.name = name;
+    member.email = email;
+    member.sponsorId = sponsorId;
+    return member;
+  }
+
   updateStatus(id: string, status: Member['status']): Member {
     const member = this.getById(id);
+    if (member.archivedAt) {
+      throw new ConflictException('Restore this member before changing their status');
+    }
     member.status = status;
     return member;
+  }
+
+  archive(id: string): Member {
+    const member = this.getById(id);
+    if (!member.archivedAt) {
+      member.status = 'inactive';
+      member.archivedAt = new Date().toISOString();
+    }
+    return member;
+  }
+
+  restore(id: string): Member {
+    const member = this.getById(id);
+    member.archivedAt = null;
+    return member;
+  }
+
+  private validateSponsorChange(memberId: string, sponsorId: string | null): void {
+    if (!sponsorId) return;
+    if (sponsorId === memberId) {
+      throw new ConflictException('A member cannot sponsor themselves');
+    }
+
+    let current = this.getById(sponsorId);
+    if (current.archivedAt) {
+      throw new ConflictException('Archived members cannot sponsor new members');
+    }
+    const visited = new Set<string>();
+    while (true) {
+      if (current.id === memberId) {
+        throw new ConflictException('A member cannot be moved under one of their descendants');
+      }
+      if (visited.has(current.id)) {
+        throw new ConflictException('This sponsor change would create a referral cycle');
+      }
+      visited.add(current.id);
+      if (!current.sponsorId) break;
+      current = this.getById(current.sponsorId);
+    }
   }
 
   getTree(rootId?: string): MemberTreeNode[] {

@@ -5,6 +5,7 @@ export interface Member {
   joinedAt: string;
   sponsorId: string | null;
   status: 'active' | 'inactive';
+  archivedAt?: string | null;
 }
 
 export interface MemberTreeNode extends Member {
@@ -105,6 +106,7 @@ export interface RewardAward {
 export interface AdminSettings {
   workspaceName: string;
   adminName: string;
+  adminEmail: string;
 }
 
 const TOKEN_KEY = 'orbit-demo-token';

@@ -38,12 +38,16 @@ Use the returned `accessToken` in the `Authorization: Bearer <accessToken>` head
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `POST` | `/api/auth/login` | Create a demo session |
+| `GET` | `/api/auth/demo-account` | Read the current demo email and whether its initial password is still active |
 | `GET` | `/api/members` | List seeded and added members |
 | `GET` | `/api/members/tree` | Get the full referral tree |
 | `GET` | `/api/members/:id` | Get one member |
 | `GET` | `/api/members/:id/tree` | Get one member and descendants |
 | `POST` | `/api/members` | Add a mock member and record a $100 demo joining order |
+| `PATCH` | `/api/members/:id` | Edit member name, email, or sponsor; existing financial history is unchanged |
 | `PATCH` | `/api/members/:id/status` | Activate or deactivate a member |
+| `DELETE` | `/api/members/:id` | Archive a member without deleting referral or financial history |
+| `PATCH` | `/api/members/:id/restore` | Restore an archived member as inactive |
 | `GET` | `/api/commissions/rates` | Get the ten unilevel rates by upline level |
 | `PUT` | `/api/commissions/rates` | Update exactly ten rates in basis points; together they may not exceed 80% |
 | `POST` | `/api/commissions/simulate` | Simulate qualifying turnover and calculate unilevel and pool allocations |
@@ -58,6 +62,12 @@ Use the returned `accessToken` in the `Authorization: Bearer <accessToken>` head
 | `PATCH` | `/api/ranks/rewards/:id/status` | Approve or fulfill a demo rank reward |
 | `GET` | `/api/settings` | Read demo workspace settings |
 | `PUT` | `/api/settings` | Update the workspace and admin display names |
+| `PATCH` | `/api/settings/account-email` | Change the admin login email after confirming the current password |
+| `PATCH` | `/api/settings/password` | Change the admin password after confirming the current password |
+
+Member management supports create, read, update, deactivate/reactivate, archive, and restore. Archiving is intentionally reversible and preserves sponsor links and all historical orders, ledger entries, and payouts. Changing a sponsor updates the current tree and future allocations; it never rewrites existing orders, ledger entries, or payout statuses. Group-volume rollups use the current tree, so moving a sponsor can change where historical volume is attributed; the demo does not snapshot ancestry per transaction.
+
+Commission rates, rank reward labels/amounts, workspace details, and the administrator profile can be edited. Payout and reward entries use their review/fulfillment status flows. Orders and ledger entries are generated records and remain immutable; reports are read-only.
 
 ## Demo compensation rules transcribed from the supplied PDF
 
@@ -68,6 +78,12 @@ Use the returned `accessToken` in the `Authorization: Bearer <accessToken>` head
 - **Withdrawals and charges:** the minimum simulated withdrawal is $10 per member. A withdrawal action marks that member's entire available pending income balance (commission, pool share, and rank rewards) paid once it reaches $10. Each rank reward is a cash-income ledger/payout entry; fulfilling its award marks that reward paid. There are no modeled deposit, withdrawal, or service charges. No real money is transferred.
 
 The above is a literal demo interpretation of the handwritten notes: the 20% pool is split among the joining member's active upline (the example shows ten uplines), while the separate level income follows the listed ten rates. The three income streams are visible in the income ledger and simulated payout queue.
+
+## PDF coverage and demo limitations
+
+The PDF's stated joining amount, 20% team pool, ten unilevel rates, three-direct rank ladder, and $10 minimum are represented in the demo. The source does not show exact Six–Ten Star reward values; those are an inferred ×3 continuation and should be confirmed before treating them as final program rules. The PDF does not specify admin account settings or member CRUD; those are administrative demo features.
+
+This remains a simulation rather than a production financial system: it has no real deposit collection, withdrawal destination/transfer, fee calculation, or persistent transaction store. Payout status changes only mark mock allocations as paid. Actual legal, tax, and compensation-plan review is also outside the PDF/demo scope.
 
 Commission rates use basis points: `1500` is 15%, `1000` is 10%, and `100` is 1%. A `referenceId` can only be simulated once during the current server run. Amounts are limited to two decimal places.
 

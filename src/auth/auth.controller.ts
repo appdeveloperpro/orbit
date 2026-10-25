@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Post, UnauthorizedException } from '@nestjs/common';
 import { IsEmail, IsString, MinLength } from 'class-validator';
 import { DemoAuthService } from './demo-auth.service';
 
@@ -15,6 +15,14 @@ class LoginDto {
 export class AuthController {
   constructor(private readonly authService: DemoAuthService) {}
 
+  @Get('demo-account')
+  getDemoAccount() {
+    return {
+      email: this.authService.getEmail(),
+      usesDefaultPassword: this.authService.hasDefaultPassword(),
+    };
+  }
+
   @Post('login')
   login(@Body() body: LoginDto) {
     const session = this.authService.login(body.email, body.password);
@@ -24,7 +32,7 @@ export class AuthController {
 
     return {
       ...session,
-      user: { email: 'demo@unilevel.test', role: 'demo-admin' },
+      user: { email: this.authService.getEmail(), role: 'demo-admin' },
     };
   }
 }

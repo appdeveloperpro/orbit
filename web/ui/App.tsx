@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Archive,
   Activity,
   Award,
   ArrowDownRight,
@@ -14,6 +15,8 @@ import {
   CreditCard,
   Download,
   Ellipsis,
+  Eye,
+  EyeOff,
   Filter,
   Gift,
   GitBranch,
@@ -22,12 +25,14 @@ import {
   Menu,
   Network,
   Plus,
+  Pencil,
   Search,
   ShoppingCart,
   Settings2,
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  RotateCcw,
   Users,
   Wallet,
   X,
@@ -61,7 +66,7 @@ const navigation: { id: Page; label: string; icon: LucideIcon; group: string }[]
   { id: 'ledger', label: 'Commission ledger', icon: Wallet, group: 'OPERATIONS' },
   { id: 'ranks', label: 'Ranks & rewards', icon: Award, group: 'GROWTH' },
   { id: 'reports', label: 'Reports', icon: TrendingUp, group: 'SYSTEM' },
-  { id: 'settings', label: 'Program settings', icon: Settings2, group: 'SYSTEM' },
+  { id: 'settings', label: 'Workspace settings', icon: Settings2, group: 'SYSTEM' },
 ];
 
 type TrendPoint = { day: string; members: number; volume: number };
@@ -118,7 +123,11 @@ function App() {
   const [rankRules, setRankRules] = useState<RankRule[]>([]);
   const [rankProgress, setRankProgress] = useState<RankProgress[]>([]);
   const [rewardAwards, setRewardAwards] = useState<RewardAward[]>([]);
-  const [adminSettings, setAdminSettings] = useState<AdminSettings>({ workspaceName: 'Northstar Network', adminName: 'Alex Demo' });
+  const [adminSettings, setAdminSettings] = useState<AdminSettings>({
+    workspaceName: 'Northstar Network',
+    adminName: 'Alex Demo',
+    adminEmail: 'demo@unilevel.test',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -277,7 +286,7 @@ function App() {
           <button className="icon-button sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X size={19} /></button>
         </div>
         <button className="workspace-switcher" onClick={() => setNotice(`Current workspace: ${adminSettings.workspaceName}.`)}>
-          <div className="workspace-avatar">N</div>
+          <div className="workspace-avatar">{initials(adminSettings.workspaceName).slice(0, 1)}</div>
           <div className="workspace-text"><strong>{adminSettings.workspaceName}</strong><span>Demo workspace</span></div>
           <ChevronDown size={15} className="muted-icon" />
         </button>
@@ -305,7 +314,7 @@ function App() {
             <ArrowRight size={15} />
           </button>
           <button className="profile-button" onClick={() => setAccountMenuOpen(!accountMenuOpen)}>
-            <div className="profile-avatar">AD</div>
+            <div className="profile-avatar">{initials(adminSettings.adminName)}</div>
             <div className="profile-meta"><strong>{adminSettings.adminName}</strong><span>Workspace admin</span></div>
             <Ellipsis size={18} className="muted-icon" />
           </button>
@@ -337,10 +346,10 @@ function App() {
             </label>
             <span className="topbar-divider" />
             <button className="icon-button notification-button" aria-label="Notifications" onClick={() => setNotice('You’re all caught up — there are no new notifications in the demo.')}><Bell size={18} /></button>
-            <button className="topbar-avatar" aria-label="Account menu" onClick={() => setAccountMenuOpen(!accountMenuOpen)}>AD</button>
+            <button className="topbar-avatar" aria-label="Account menu" onClick={() => setAccountMenuOpen(!accountMenuOpen)}>{initials(adminSettings.adminName)}</button>
             {accountMenuOpen && (
               <div className="account-menu">
-                <span>Signed in as <strong>demo@unilevel.test</strong></span>
+                <span>Signed in as <strong>{adminSettings.adminEmail}</strong></span>
                 <button onClick={signOut}><LogOut size={15} /> Sign out</button>
               </div>
             )}
@@ -371,10 +380,16 @@ function App() {
                   search={search}
                   onSearchChange={setSearch}
                   onAdd={() => setAddMemberOpen(true)}
-                  onStatusChanged={(member) => {
+                  onMemberChanged={(member, action) => {
                     setMembers((current) => current.map((item) => item.id === member.id ? member : item));
                     void refreshData().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not refresh members.'));
-                    setNotice(`${member.name} is now ${member.status}.`);
+                    setNotice(action === 'archive'
+                      ? `${member.name} was archived; transaction history was preserved.`
+                      : action === 'restore'
+                        ? `${member.name} was restored.`
+                        : action === 'status'
+                          ? `${member.name} is now ${member.status}.`
+                          : `${member.name} profile was updated.`);
                   }}
                 />
               )}
@@ -420,8 +435,9 @@ function App() {
                   settings={adminSettings}
                   onSaved={(nextSettings) => {
                     setAdminSettings(nextSettings);
-                    setNotice('Program settings saved.');
+                    setNotice('Workspace and admin profile details saved.');
                   }}
+                  onPasswordChanged={() => setNotice('Admin password updated. Use the new password next time you sign in.')}
                   onSignOut={signOut}
                 />
               )}
@@ -431,10 +447,11 @@ function App() {
       </main>
 
       {addMemberOpen && (
-        <AddMemberModal
+        <MemberModal
           members={members}
+          mode="create"
           onClose={() => setAddMemberOpen(false)}
-          onCreated={(member) => {
+          onSaved={(member) => {
             setMembers((current) => [member, ...current]);
             void refreshData().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Could not refresh members.'));
             setAddMemberOpen(false);
@@ -449,15 +466,34 @@ function App() {
 
 function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = useState('');
+  const [demoEmail, setDemoEmail] = useState('demo@unilevel.test');
+  const [usesDefaultPassword, setUsesDefaultPassword] = useState(true);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [filled, setFilled] = useState(false);
 
+  useEffect(() => {
+    let alive = true;
+    api<{ email: string; usesDefaultPassword: boolean }>('/auth/demo-account')
+      .then((account) => {
+        if (alive) {
+          setDemoEmail(account.email);
+          setUsesDefaultPassword(account.usesDefaultPassword);
+        }
+      })
+      .catch(() => {
+        if (alive) setError('Could not load the current demo account. You can still enter your sign-in details manually.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   function fillDemo(): void {
-    setEmail('demo@unilevel.test');
-    setPassword('Demo123!');
+    setEmail(demoEmail);
+    setPassword(usesDefaultPassword ? 'Demo123!' : '');
     setFilled(true);
     setError('');
   }
@@ -514,7 +550,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
           <p>Sign in to your network workspace.</p>
           <button type="button" className={`demo-autofill ${filled ? 'filled' : ''}`} onClick={fillDemo}>
             <Sparkles size={16} />
-            <span><strong>{filled ? 'Demo credentials filled in' : 'Use demo account'}</strong><small>One click to fill your sign-in details</small></span>
+            <span><strong>{filled ? 'Demo account details filled in' : 'Use demo account'}</strong><small>{usesDefaultPassword ? 'One click to fill your sign-in details' : 'Email filled; enter your updated password'}</small></span>
             {filled ? <Check size={17} /> : <ArrowRight size={16} />}
           </button>
           <div className="form-separator"><span>OR SIGN IN</span></div>
@@ -526,7 +562,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => void }) {
             {error && <div className="form-error">{error}</div>}
             <button className="primary-button login-submit" type="submit" disabled={loading}>{loading ? <span className="spinner" /> : <>Sign in to workspace <ArrowRight size={16} /></>}</button>
           </form>
-          <div className="demo-hint"><ShieldCheck size={15} /><span>Demo mode · Data resets when the server restarts</span></div>
+          <div className="demo-hint"><ShieldCheck size={15} /><span>After changing your password, sign in with your updated password. Demo data resets on restart.</span></div>
         </div>
         <div className="login-panel-footer"><span>© 2026 ORBIT NETWORKS</span><span>Privacy &nbsp; · &nbsp; Terms</span></div>
       </section>
@@ -652,13 +688,16 @@ function StatCard({ label, value, change, icon: Icon, tone, trend, footer }: { l
   return <div className="stat-card"><div className="stat-top"><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={17} /></span></div><div className="stat-value">{value}</div><div className={`stat-change ${trend}`}>{trend === 'down' ? <ArrowDownRight size={14} /> : trend === 'up' ? <ArrowUpRight size={14} /> : <span className="neutral-dot" />}{change}</div><div className="stat-footer">{footer}</div></div>;
 }
 
-function MembersPage({ members, networkDepth, search, onSearchChange, onAdd, onStatusChanged }: { members: Member[]; networkDepth: number; search: string; onSearchChange: (value: string) => void; onAdd: () => void; onStatusChanged: (member: Member) => void }) {
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+function MembersPage({ members, networkDepth, search, onSearchChange, onAdd, onMemberChanged }: { members: Member[]; networkDepth: number; search: string; onSearchChange: (value: string) => void; onAdd: () => void; onMemberChanged: (member: Member, action: 'profile' | 'status' | 'archive' | 'restore') => void }) {
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'archived'>('all');
   const [changingId, setChangingId] = useState('');
   const [mutationError, setMutationError] = useState('');
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
   const filtered = members.filter((member) => {
     const matchesText = `${member.name} ${member.email} ${member.id}`.toLowerCase().includes(search.toLowerCase());
-    return matchesText && (statusFilter === 'all' || member.status === statusFilter);
+    const matchesStatus = statusFilter === 'all'
+      || (statusFilter === 'archived' ? Boolean(member.archivedAt) : !member.archivedAt && member.status === statusFilter);
+    return matchesText && matchesStatus;
   });
 
   async function toggleStatus(member: Member): Promise<void> {
@@ -668,7 +707,7 @@ function MembersPage({ members, networkDepth, search, onSearchChange, onAdd, onS
         method: 'PATCH',
         body: JSON.stringify({ status: member.status === 'active' ? 'inactive' : 'active' }),
       });
-      onStatusChanged(updated);
+      onMemberChanged(updated, 'status');
     } catch (cause) {
       setMutationError(cause instanceof Error ? cause.message : 'Could not update member status.');
     } finally {
@@ -676,20 +715,46 @@ function MembersPage({ members, networkDepth, search, onSearchChange, onAdd, onS
     }
   }
 
+  async function archiveMember(member: Member): Promise<void> {
+    if (!window.confirm(`Archive ${member.name}? Their account will be deactivated, while orders and transaction history remain available.`)) return;
+    setChangingId(member.id);
+    try {
+      const updated = await api<Member>(`/members/${member.id}`, { method: 'DELETE' });
+      onMemberChanged(updated, 'archive');
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : 'Could not archive this member.');
+    } finally {
+      setChangingId('');
+    }
+  }
+
+  async function restoreMember(member: Member): Promise<void> {
+    setChangingId(member.id);
+    try {
+      const updated = await api<Member>(`/members/${member.id}/restore`, { method: 'PATCH' });
+      onMemberChanged(updated, 'restore');
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : 'Could not restore this member.');
+    } finally {
+      setChangingId('');
+    }
+  }
+
   return <>
     <PageHeading eyebrow="PEOPLE & COMMUNITY" title="Members" description="Manage your community, follow referrals, and keep your network growing." action={<button className="primary-button" onClick={onAdd}><Plus size={17} /> Add member</button>} />
-    <section className="stat-strip"><div><Users size={17} /><span>Total members</span><strong>{members.length}</strong></div><div><span className="tiny-status active-status" /><span>Active</span><strong>{members.filter((member) => member.status === 'active').length}</strong></div><div><span className="tiny-status inactive-status" /><span>Inactive</span><strong>{members.filter((member) => member.status === 'inactive').length}</strong></div><div><GitBranch size={17} /><span>Network depth</span><strong>{networkDepth} levels</strong></div></section>
+    <section className="stat-strip"><div><Users size={17} /><span>Total members</span><strong>{members.length}</strong></div><div><span className="tiny-status active-status" /><span>Active</span><strong>{members.filter((member) => !member.archivedAt && member.status === 'active').length}</strong></div><div><span className="tiny-status inactive-status" /><span>Inactive</span><strong>{members.filter((member) => !member.archivedAt && member.status === 'inactive').length}</strong></div><div><GitBranch size={17} /><span>Network depth</span><strong>{networkDepth} levels</strong></div></section>
     <div className="panel members-panel">
       {mutationError && <div className="inline-error"><ShieldCheck size={17} /><span>{mutationError}</span><button onClick={() => setMutationError('')}>Dismiss</button></div>}
-      <div className="table-toolbar"><div><div className="panel-title">All members <span className="table-count">{filtered.length}</span></div><div className="panel-caption">Your complete member directory</div></div><div className="table-controls"><label className="table-search"><Search size={15} /><input placeholder="Search members" value={search} onChange={(event) => onSearchChange(event.target.value)} /></label><label className="filter-select"><Filter size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label><button className="secondary-button export-button" onClick={() => exportMembers(filtered)}><Download size={15} /> Export</button></div></div>
-      {filtered.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>MEMBER</th><th>MEMBER ID</th><th>REFERRED BY</th><th>JOINED</th><th>STATUS</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{filtered.map((member, index) => <tr key={member.id}><td><div className="member-cell"><Avatar name={member.name} index={index} /><div><strong>{member.name}</strong><small>{member.email}</small></div></div></td><td className="id-cell">{member.id}</td><td>{members.find((candidate) => candidate.id === member.sponsorId)?.name ?? <span className="muted-text">Direct / root</span>}</td><td>{shortDate(member.joinedAt)}</td><td><span className={`status-pill ${member.status}`}><i />{member.status}</span></td><td><button className="row-action" disabled={changingId === member.id} onClick={() => void toggleStatus(member)}>{changingId === member.id ? <span className="spinner small-spinner" /> : <Ellipsis size={18} />}<span className="row-action-tooltip">{member.status === 'active' ? 'Deactivate' : 'Activate'}</span></button></td></tr>)}</tbody></table></div> : <EmptyState icon={Search} title="No members found" message="Try a different search or status filter." action={<button className="text-action" onClick={() => { onSearchChange(''); setStatusFilter('all'); }}>Clear filters</button>} />}
-      <div className="table-footer"><span>Showing <strong>{filtered.length}</strong> of <strong>{members.length}</strong> members</span><span>Changes are saved to the in-memory demo workspace</span></div>
+      <div className="table-toolbar"><div><div className="panel-title">Member directory <span className="table-count">{filtered.length}</span></div><div className="panel-caption">Create, update, deactivate, archive, and restore members</div></div><div className="table-controls"><label className="table-search"><Search size={15} /><input placeholder="Search members" value={search} onChange={(event) => onSearchChange(event.target.value)} /></label><label className="filter-select"><Filter size={15} /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="all">All members</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label><button className="secondary-button export-button" onClick={() => exportMembers(filtered)}><Download size={15} /> Export</button></div></div>
+      {filtered.length ? <div className="data-table-wrap"><table className="data-table"><thead><tr><th>MEMBER</th><th>MEMBER ID</th><th>REFERRED BY</th><th>JOINED</th><th>STATUS</th><th><span className="sr-only">Member actions</span></th></tr></thead><tbody>{filtered.map((member, index) => <tr key={member.id} className={member.archivedAt ? 'archived-member-row' : ''}><td><div className="member-cell"><Avatar name={member.name} index={index} status={member.status} /><div><strong>{member.name}</strong><small>{member.email}</small></div></div></td><td className="id-cell">{member.id}</td><td>{members.find((candidate) => candidate.id === member.sponsorId)?.name ?? <span className="muted-text">Direct / root</span>}</td><td>{shortDate(member.joinedAt)}</td><td><span className={`status-pill ${member.archivedAt ? 'archived' : member.status}`}><i />{member.archivedAt ? 'Archived' : member.status}</span></td><td><div className="member-row-actions">{changingId === member.id ? <span className="spinner dark-spinner small-spinner" /> : member.archivedAt ? <button className="row-action" aria-label={`Restore ${member.name}`} title="Restore member" onClick={() => void restoreMember(member)}><RotateCcw size={16} /></button> : <><button className="row-action" aria-label={`Edit ${member.name}`} title="Edit profile" onClick={() => setEditingMember(member)}><Pencil size={15} /></button><button className="row-action" aria-label={`${member.status === 'active' ? 'Deactivate' : 'Activate'} ${member.name}`} title={member.status === 'active' ? 'Deactivate' : 'Activate'} onClick={() => void toggleStatus(member)}><Ellipsis size={17} /></button><button className="row-action archive-action" aria-label={`Archive ${member.name}`} title="Archive member" onClick={() => void archiveMember(member)}><Archive size={15} /></button></>}</div></td></tr>)}</tbody></table></div> : <EmptyState icon={Search} title="No members found" message="Try a different search or status filter." action={<button className="text-action" onClick={() => { onSearchChange(''); setStatusFilter('all'); }}>Clear filters</button>} />}
+      <div className="table-footer"><span>Showing <strong>{filtered.length}</strong> of <strong>{members.length}</strong> members</span><span>Archive preserves referral and financial history</span></div>
     </div>
+    {editingMember && <MemberModal key={editingMember.id} members={members} member={editingMember} mode="edit" onClose={() => setEditingMember(null)} onSaved={(member) => { onMemberChanged(member, 'profile'); setEditingMember(null); }} />}
   </>;
 }
 
 function exportMembers(members: Member[]): void {
-  const rows = [['ID', 'Name', 'Email', 'Sponsor ID', 'Joined', 'Status'], ...members.map((member) => [member.id, member.name, member.email, member.sponsorId ?? '', member.joinedAt, member.status])];
+  const rows = [['ID', 'Name', 'Email', 'Sponsor ID', 'Joined', 'Status'], ...members.map((member) => [member.id, member.name, member.email, member.sponsorId ?? '', member.joinedAt, member.archivedAt ? 'archived' : member.status])];
   const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(',')).join('\r\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
@@ -726,7 +791,7 @@ function NetworkPage({ tree, members, networkDepth }: { tree: MemberTreeNode[]; 
       <aside className="panel member-detail-panel">
         {selectedMember ? <>
           <div className="detail-top"><span className="eyebrow">MEMBER PROFILE</span><button className="icon-button subtle" aria-label="Clear selection" onClick={() => setSelected(null)}><X size={17} /></button></div>
-          <div className="detail-profile"><Avatar name={selectedMember.name} large /><h3>{selectedMember.name}</h3><span className="detail-email">{selectedMember.email}</span><span className={`status-pill ${selectedMember.status}`}><i />{selectedMember.status}</span></div>
+          <div className="detail-profile"><Avatar name={selectedMember.name} large /><h3>{selectedMember.name}</h3><span className="detail-email">{selectedMember.email}</span><span className={`status-pill ${selectedMember.archivedAt ? 'archived' : selectedMember.status}`}><i />{selectedMember.archivedAt ? 'Archived' : selectedMember.status}</span></div>
           <div className="detail-divider" />
           <div className="detail-metadata"><div><span>MEMBER ID</span><strong>{selectedMember.id}</strong></div><div><span>JOINED</span><strong>{shortDate(selectedMember.joinedAt)}</strong></div><div><span>SPONSORED BY</span><strong>{memberById.get(selectedMember.sponsorId ?? '')?.name ?? 'Network owner'}</strong></div><div><span>DIRECT REFERRALS</span><strong>{members.filter((member) => member.sponsorId === selectedMember.id).length}</strong></div></div>
           <button className="secondary-button copy-referral" onClick={() => void copyReferral(selectedMember)}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? 'Referral link copied' : 'Copy referral link'}</button>
@@ -745,7 +810,7 @@ function TreeNode({ node, depth, selected, onSelect }: { node: MemberTreeNode; d
       <button className={`tree-member ${selected === node.id ? 'selected' : ''}`} onClick={() => onSelect(node.id)}>
         <Avatar name={node.name} status={node.status} />
         <span className="tree-member-info"><strong>{node.name}</strong><small>{node.id}</small></span>
-        <span className={`tree-status ${node.status}`} />
+        <span className={`tree-status ${node.archivedAt ? 'archived' : node.status}`} title={node.archivedAt ? 'Archived member' : node.status} />
         {node.children.length > 0 && <span className="tree-child-count">{node.children.length}</span>}
       </button>
       {node.children.length > 0 && <button className="tree-expand" aria-label={expanded ? 'Collapse referrals' : 'Expand referrals'} onClick={() => setExpanded(!expanded)}>{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</button>}
@@ -1086,14 +1151,28 @@ function ReportsPage({ members, orders, payouts, progress, ledger }: { members: 
   </>;
 }
 
-function SettingsPage({ settings, onSaved, onSignOut }: { settings: AdminSettings; onSaved: (settings: AdminSettings) => void; onSignOut: () => void }) {
+function SettingsPage({ settings, onSaved, onPasswordChanged, onSignOut }: { settings: AdminSettings; onSaved: (settings: AdminSettings) => void; onPasswordChanged: () => void; onSignOut: () => void }) {
   const [workspaceName, setWorkspaceName] = useState(settings.workspaceName);
   const [adminName, setAdminName] = useState(settings.adminName);
+  const [adminEmail, setAdminEmail] = useState(settings.adminEmail);
+  const [emailPassword, setEmailPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   useEffect(() => {
     setWorkspaceName(settings.workspaceName);
     setAdminName(settings.adminName);
+    setAdminEmail(settings.adminEmail);
   }, [settings]);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -1113,16 +1192,83 @@ function SettingsPage({ settings, onSaved, onSignOut }: { settings: AdminSetting
     }
   }
 
+  async function updateEmail(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setSavingEmail(true);
+    setEmailError('');
+    try {
+      const updated = await api<AdminSettings>('/settings/account-email', {
+        method: 'PATCH',
+        body: JSON.stringify({ email: adminEmail, currentPassword: emailPassword }),
+      });
+      setEmailPassword('');
+      onSaved(updated);
+    } catch (cause) {
+      setEmailError(cause instanceof Error ? cause.message : 'Could not update the admin email.');
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
+  async function updatePassword(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setPasswordError('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('The new password and confirmation do not match.');
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      await api<{ updated: boolean }>('/settings/password', {
+        method: 'PATCH',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      onPasswordChanged();
+    } catch (cause) {
+      setPasswordError(cause instanceof Error ? cause.message : 'Could not update the admin password.');
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
   return <>
-    <PageHeading eyebrow="WORKSPACE ADMINISTRATION" title="Program settings" description="Manage the demo workspace identity and review how this prototype handles program data." />
+    <PageHeading eyebrow="WORKSPACE ADMINISTRATION" title="Workspace & admin settings" description="Manage workspace details, administrator access, and demo safeguards." />
     <div className="settings-layout">
       <section className="panel settings-panel">
         <div className="panel-header"><div><div className="panel-title">Workspace profile</div><div className="panel-caption">This identity is used across your admin workspace</div></div><span className="settings-icon"><Settings2 size={17} /></span></div>
         <form className="settings-form" onSubmit={(event) => void submit(event)}><label className="field-label" htmlFor="workspace-name">Workspace name</label><input id="workspace-name" className="form-control" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} minLength={2} maxLength={48} required /><label className="field-label" htmlFor="admin-name">Administrator display name</label><input id="admin-name" className="form-control" value={adminName} onChange={(event) => setAdminName(event.target.value)} minLength={2} maxLength={48} required /><div className="settings-readonly"><span>Default currency</span><strong>USD · US Dollar</strong><small>Currency is fixed for consistent demo calculations.</small></div>{error && <div className="form-error">{error}</div>}<div className="settings-actions"><span>Changes are stored in memory until restart.</span><button className="primary-button" type="submit" disabled={saving}>{saving ? <span className="spinner" /> : <Check size={16} />}{saving ? 'Saving...' : 'Save workspace profile'}</button></div></form>
       </section>
       <aside className="settings-side">
-        <div className="panel settings-info-card"><div className="settings-info-icon"><ShieldCheck size={18} /></div><strong>Demo safeguards</strong><p>This app uses temporary in-memory sessions, mock members, simulated order volume, and non-transferable payout statuses.</p><div className="settings-info-list"><span><Check size={14} />No real payment processing</span><span><Check size={14} />Data resets on server restart</span><span><Check size={14} />One demo administrator account</span></div></div>
-        <div className="panel settings-account-card"><div className="settings-account-top"><Avatar name={settings.adminName} large /><div><strong>{settings.adminName}</strong><span>Workspace administrator</span></div></div><div className="settings-account-email">demo@unilevel.test</div><button className="secondary-button" onClick={onSignOut}><LogOut size={15} /> Sign out of demo</button></div>
+        <section className="panel settings-account-card">
+          <div className="panel-header"><div><div className="panel-title">Administrator profile</div><div className="panel-caption">Update the email used to sign in</div></div><Avatar name={adminName} large /></div>
+          <div className="settings-account-summary"><strong>{adminName}</strong><span>{settings.adminEmail}</span></div>
+          <form className="settings-form account-edit-form" onSubmit={(event) => void updateEmail(event)}>
+            <label className="field-label" htmlFor="admin-email">Login email</label>
+            <input id="admin-email" className="form-control" type="email" value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} maxLength={254} required />
+            <label className="field-label" htmlFor="email-current-password">Confirm with current password</label>
+            <div className="input-wrap password-wrap settings-password-wrap"><input id="email-current-password" type={showEmailPassword ? 'text' : 'password'} autoComplete="current-password" value={emailPassword} onChange={(event) => setEmailPassword(event.target.value)} required /><button type="button" aria-label={showEmailPassword ? 'Hide password' : 'Show password'} onClick={() => setShowEmailPassword(!showEmailPassword)}>{showEmailPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+            {emailError && <div className="form-error">{emailError}</div>}
+            <button className="secondary-button" type="submit" disabled={savingEmail}>{savingEmail ? <span className="spinner dark-spinner" /> : <Check size={15} />}{savingEmail ? 'Updating...' : 'Update login email'}</button>
+          </form>
+          <div className="settings-divider" />
+          <div className="settings-security-heading"><strong>Password & security</strong><span>Changing your password applies immediately.</span></div>
+          <form className="settings-form account-edit-form" onSubmit={(event) => void updatePassword(event)}>
+            <label className="field-label" htmlFor="current-admin-password">Current password</label>
+            <div className="input-wrap password-wrap settings-password-wrap"><input id="current-admin-password" type={showCurrentPassword ? 'text' : 'password'} autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /><button type="button" aria-label={showCurrentPassword ? 'Hide password' : 'Show password'} onClick={() => setShowCurrentPassword(!showCurrentPassword)}>{showCurrentPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+            <label className="field-label" htmlFor="new-admin-password">New password</label>
+            <div className="input-wrap password-wrap settings-password-wrap"><input id="new-admin-password" type={showNewPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={72} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /><button type="button" aria-label={showNewPassword ? 'Hide password' : 'Show password'} onClick={() => setShowNewPassword(!showNewPassword)}>{showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+            <label className="field-label" htmlFor="confirm-admin-password">Confirm new password</label>
+            <div className="input-wrap password-wrap settings-password-wrap"><input id="confirm-admin-password" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={72} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /><button type="button" aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} onClick={() => setShowConfirmPassword(!showConfirmPassword)}>{showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div>
+            <span className="settings-password-hint">Use at least 8 characters. You will keep your current session.</span>
+            {passwordError && <div className="form-error">{passwordError}</div>}
+            <button className="primary-button" type="submit" disabled={savingPassword}>{savingPassword ? <span className="spinner" /> : <ShieldCheck size={15} />}{savingPassword ? 'Updating password...' : 'Change password'}</button>
+          </form>
+          <button className="secondary-button settings-signout" onClick={onSignOut}><LogOut size={15} /> Sign out of demo</button>
+        </section>
+        <div className="panel settings-info-card"><div className="settings-info-icon"><ShieldCheck size={18} /></div><strong>Demo safeguards</strong><p>This app uses temporary in-memory sessions, mock members, simulated order volume, and non-transferable payout statuses.</p><div className="settings-info-list"><span><Check size={14} />No real payment processing</span><span><Check size={14} />Data resets on server restart</span><span><Check size={14} />Account changes reset on server restart</span></div></div>
       </aside>
     </div>
     <div className="compliance-note"><CircleHelp size={16} /><span>Before real launch, replace the mock auth, add persistent storage and role-based access, and review legal/compliance needs for your compensation plan.</span></div>
@@ -1141,20 +1287,40 @@ function downloadCsv(filename: string, rows: string[][]): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function AddMemberModal({ members, onClose, onCreated }: { members: Member[]; onClose: () => void; onCreated: (member: Member) => void }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [sponsorId, setSponsorId] = useState('');
+function MemberModal({ members, member, mode, onClose, onSaved }: { members: Member[]; member?: Member; mode: 'create' | 'edit'; onClose: () => void; onSaved: (member: Member) => void }) {
+  const [name, setName] = useState(member?.name ?? '');
+  const [email, setEmail] = useState(member?.email ?? '');
+  const [sponsorId, setSponsorId] = useState(member?.sponsorId ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const editing = mode === 'edit' && member;
+  const excludedSponsorIds = new Set<string>();
+  if (member) {
+    const pending = [member.id];
+    while (pending.length) {
+      const parentId = pending.pop();
+      if (!parentId) continue;
+      excludedSponsorIds.add(parentId);
+      pending.push(...members.filter((candidate) => candidate.sponsorId === parentId).map((candidate) => candidate.id));
+    }
+  }
+  const sponsors = members.filter((candidate) => !candidate.archivedAt && !excludedSponsorIds.has(candidate.id));
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setSaving(true);
     setError('');
     try {
-      const member = await api<Member>('/members', { method: 'POST', body: JSON.stringify({ name, email, sponsorId: sponsorId || undefined }) });
-      onCreated(member);
+      const saved = editing
+        ? await api<Member>(`/members/${member.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name, email, sponsorId: sponsorId || undefined }),
+        })
+        : await api<Member>('/members', {
+          method: 'POST',
+          body: JSON.stringify({ name, email, sponsorId: sponsorId || undefined }),
+        });
+      onSaved(saved);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not add this member.');
     } finally {
@@ -1162,7 +1328,7 @@ function AddMemberModal({ members, onClose, onCreated }: { members: Member[]; on
     }
   }
 
-  return <div className="modal-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="add-member-title"><div className="modal-header"><div><div className="eyebrow">NETWORK MANAGEMENT</div><h2 id="add-member-title">Add a member</h2><p>Create a member and connect them to your referral tree.</p></div><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={19} /></button></div><form className="modal-form" onSubmit={(event) => void submit(event)}><label className="field-label" htmlFor="member-name">Full name</label><input className="form-control" id="member-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Jordan Taylor" minLength={2} required /><label className="field-label" htmlFor="member-email">Email address</label><input className="form-control" id="member-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="jordan@example.test" required /><label className="field-label" htmlFor="member-sponsor">Sponsor / referrer <span className="optional-label">OPTIONAL</span></label><select className="form-control" id="member-sponsor" value={sponsorId} onChange={(event) => setSponsorId(event.target.value)}><option value="">Direct member / network root</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.id}{member.status === 'inactive' ? ' (inactive)' : ''}</option>)}</select>  <div className="modal-note"><ShieldCheck size={15} /> Enrollment records a $100 joining order for demo turnover; no payment is collected.</div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={saving}>{saving ? <span className="spinner" /> : <Plus size={16} />}{saving ? 'Adding member...' : 'Add to network'}</button></div></form></section></div>;
+  return <div className="modal-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="member-modal-title"><div className="modal-header"><div><div className="eyebrow">NETWORK MANAGEMENT</div><h2 id="member-modal-title">{editing ? 'Edit member' : 'Add a member'}</h2><p>{editing ? 'Update this member’s profile and referral placement.' : 'Create a member and connect them to your referral tree.'}</p></div><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={19} /></button></div><form className="modal-form" onSubmit={(event) => void submit(event)}><label className="field-label" htmlFor="member-name">Full name</label><input className="form-control" id="member-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Jordan Taylor" minLength={2} maxLength={64} required /><label className="field-label" htmlFor="member-email">Email address</label><input className="form-control" id="member-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="jordan@example.test" maxLength={254} required /><label className="field-label" htmlFor="member-sponsor">Sponsor / referrer <span className="optional-label">OPTIONAL</span></label><select className="form-control" id="member-sponsor" value={sponsorId} onChange={(event) => setSponsorId(event.target.value)}><option value="">Direct member / network root</option>{sponsors.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name} · {candidate.id}{candidate.status === 'inactive' ? ' (inactive)' : ''}</option>)}</select>{editing ? <div className="modal-note"><ShieldCheck size={15} /> Existing orders and payouts are not recalculated. A sponsor change updates the current tree and future allocations.</div> : <div className="modal-note"><ShieldCheck size={15} /> Enrollment records a $100 joining order for demo turnover; no payment is collected.</div>}{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={saving}>{saving ? <span className="spinner" /> : editing ? <Check size={16} /> : <Plus size={16} />}{saving ? 'Saving...' : editing ? 'Save member' : 'Add to network'}</button></div></form></section></div>;
 }
 
 function Avatar({ name, large = false, index = 0, status }: { name: string; large?: boolean; index?: number; status?: 'active' | 'inactive' }) {
